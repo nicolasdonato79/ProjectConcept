@@ -1,0 +1,123 @@
+CREATE OR REPLACE PROCEDURE SANTA_FE.sp_process_queue
+AS
+  CURSOR c_queue IS
+    SELECT id,
+           user_id,
+           operation_type,
+           updated_field,
+           old_value,
+           new_value
+      FROM user_details_sync_queue
+     WHERE processed = 'N'
+     ORDER BY id;
+
+  v_json          CLOB;
+  v_status        NUMBER;
+  v_error_msg     VARCHAR2(1000);
+BEGIN
+  UTL_HTTP.set_wallet('file:/home/oracle/wallets/http_wallet');
+
+  FOR rec IN c_queue LOOP
+    BEGIN
+        -- Armar JSON según tipo de operación
+        IF rec.operation_type = 'INSERT' THEN
+          BEGIN
+            SELECT '{' ||
+                   '"userId": "'     || user_id     || '", ' ||
+                   '"username": "'   || username    || '", ' ||
+                   '"firstName": "'  || first_name  || '", ' ||
+                   '"lastName": "'   || last_name   || '", ' ||
+                   '"gender": "'     || gender      || '", ' ||
+                   '"password": "'   || password    || '", ' ||
+                   '"status": "'     || status      || '"'  ||
+                   '}'
+              INTO v_json
+              FROM user_details
+             WHERE user_id = rec.user_id;
+          EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+              -- Si el registro ya no está, armar JSON con campos vacíos
+              v_json := '{' ||
+                        '"userId": "'     || rec.user_id || '", ' ||
+                        '"username": "", ' ||
+                        '"firstName": "", ' ||
+                        '"lastName": "", ' ||
+                        '"gender": "", ' ||
+                        '"password": "", ' ||
+                        '"status": ""' ||
+                        '}';
+          END;
+
+        ELSIF rec.operation_type = 'UPDATE' THEN
+          -- Versión actual: enviar todo el registro completo (igual que INSERT)
+          BEGIN
+            SELECT '{' ||
+                   '"userId": "'     || user_id     || '", ' ||
+                   '"username": "'   || username    || '", ' ||
+                   '"firstName": "'  || first_name  || '", ' ||
+                   '"lastName": "'   || last_name   || '", ' ||
+                   '"gender": "'     || gender      || '", ' ||
+                   '"password": "'   || password    || '", ' ||
+                   '"status": "'     || status      || '"'  ||
+                   '}'
+              INTO v_json
+              FROM user_details
+             WHERE user_id = rec.user_id;
+          EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+              -- Si el registro ya no está, armar JSON con campos vacíos
+              v_json := '{' ||
+                        '"userId": "'     || rec.user_id || '", ' ||
+                        '"username": "", ' ||
+                        '"firstName": "", ' ||
+                        '"lastName": "", ' ||
+                        '"gender": "", ' ||
+                        '"password": "", ' ||
+                        '"status": ""' ||
+                        '}';
+          END;
+
+          /*
+          -- Versión anterior: solo enviar campo modificado
+          v_json := '{' ||
+                    '"userId": "'        || rec.user_id       || '", ' ||
+                    '"field": "'         || rec.updated_field || '", ' ||
+                    '"oldValue": "'      || rec.old_value     || '", ' ||
+                    '"newValue": "'      || rec.new_value     || '"'  ||
+                    '}';
+          */
+
+        ELSIF rec.operation_type = 'DELETE' THEN
+          v_json := '{ "userId": "' || rec.user_id || '" }';
+        END IF;
+
+        -- Enviar la solicitud
+        v_status := fn_send_apirest_json(p_json => v_json, p_operation_type => rec.operation_type);
+
+        -- Marcar el registro como procesado, registrar resultado
+        UPDATE user_details_sync_queue
+           SET processed     = CASE WHEN v_status = 200 THEN 'Y' ELSE 'N' END,
+               response_code = v_status,
+               response_msg  = NULL,
+               processed_at  = SYSTIMESTAMP
+         WHERE id = rec.id;
+
+    EXCEPTION
+      WHEN OTHERS THEN
+        v_error_msg := SQLERRM;
+
+        UPDATE user_details_sync_queue
+           SET processed     = 'N',
+               response_code = -999,
+               response_msg  = v_error_msg,
+               processed_at  = SYSTIMESTAMP
+         WHERE id = rec.id;
+    END;
+  END LOOP;
+
+  COMMIT;
+EXCEPTION
+  WHEN OTHERS THEN
+    ROLLBACK;
+    RAISE;
+END;

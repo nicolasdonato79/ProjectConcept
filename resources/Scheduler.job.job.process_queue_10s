@@ -1,0 +1,9 @@
+BEGIN
+  DBMS_SCHEDULER.CREATE_JOB(
+	job_name => 'JOB_PROCESS_QUEUE_10S',
+	job_action => 'null',
+	start_date => TO_TIMESTAMP_TZ('2025-05-20 15:42:38.0 -3:00', 'yyyy-mm-dd hh24:mi:ss.ff tzr'),
+	comments => 'Job que ejecuta el procesamiento de la cola cada 10 segundos',
+	enabled => TRUE
+);
+END;

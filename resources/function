@@ -1,0 +1,49 @@
+CREATE OR REPLACE FUNCTION SANTA_FE.fn_send_apirest_json (
+    p_json           IN CLOB,
+    p_operation_type IN VARCHAR2
+) RETURN NUMBER
+AS
+--    v_url        VARCHAR2(1000) := 'http://localhost:8080/api/user'; -- URL hardcodeada por ahora
+--    v_url        VARCHAR2(1000) := 'https://openlibrary.org/api/books?bibkeys=ISBN:0201558025,LCCN:93005405'; -- URL hardcodeada por ahora
+--    v_url        VARCHAR2(1000) := 'http://httpbin.org/post'; -- URL hardcodeada por ahora
+    v_url        VARCHAR2(1000) := 'http://172.20.100.65:8081/msmiddleware/users-details/sync-from-legacy'; -- URL hardcodeada por ahora
+    v_req        UTL_HTTP.req;
+    v_resp       UTL_HTTP.resp;
+    v_method     VARCHAR2(10);
+    v_status     NUMBER;
+BEGIN
+    -- Determinar método HTTP según el tipo de operación
+    IF UPPER(p_operation_type) = 'DELETE' THEN
+        v_method := 'DELETE';
+    ELSIF UPPER(p_operation_type) = 'INSERT' THEN
+        v_method := 'POST';
+    ELSIF UPPER(p_operation_type) = 'UPDATE' THEN
+        v_method := 'PUT';
+    END IF;
+
+    -- Iniciar la solicitud HTTP
+    v_req := UTL_HTTP.begin_request(url => v_url, method => v_method, http_version => 'HTTP/1.1');
+
+    -- Encabezados
+    UTL_HTTP.set_header(v_req, 'Content-Type', 'application/json');
+    UTL_HTTP.set_header(v_req, 'Content-Length', LENGTH(p_json));
+
+    UTL_HTTP.write_text(v_req, p_json);
+
+    -- Obtener respuesta
+    v_resp := UTL_HTTP.get_response(v_req);
+    v_status := v_resp.status_code;
+    UTL_HTTP.end_response(v_resp);
+
+    RETURN v_status;
+
+EXCEPTION
+    WHEN UTL_HTTP.REQUEST_FAILED THEN
+        DBMS_OUTPUT.put_line('Detalle: '||
+      UTL_HTTP.get_detailed_sqlerrm);
+        --RETURN -1; -- Fallo de conexión, URL no válida, etc.
+        RAISE;
+    WHEN OTHERS THEN
+        --RETURN -999; -- Otro error general
+        RAISE;
+END;

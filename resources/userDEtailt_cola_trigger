@@ -1,0 +1,60 @@
+CREATE OR REPLACE TRIGGER SANTA_FE.tg_user_details_sync_queue
+AFTER INSERT OR UPDATE OR DELETE ON user_details
+FOR EACH ROW
+DECLARE
+BEGIN
+  -- INSERT
+  IF INSERTING THEN
+    INSERT INTO user_details_sync_queue (
+      user_id,
+      operation_type
+    ) VALUES (
+      :NEW.user_id,
+      'INSERT'
+    );
+  END IF;
+
+  -- UPDATE
+  IF UPDATING THEN
+    IF :OLD.first_name != :NEW.first_name THEN
+      INSERT INTO user_details_sync_queue (user_id, operation_type, updated_field, old_value, new_value)
+      VALUES (:NEW.user_id, 'UPDATE', 'first_name', :OLD.first_name, :NEW.first_name);
+    END IF;
+
+    IF :OLD.last_name != :NEW.last_name THEN
+      INSERT INTO user_details_sync_queue (user_id, operation_type, updated_field, old_value, new_value)
+      VALUES (:NEW.user_id, 'UPDATE', 'last_name', :OLD.last_name, :NEW.last_name);
+    END IF;
+
+    IF :OLD.gender != :NEW.gender THEN
+      INSERT INTO user_details_sync_queue (user_id, operation_type, updated_field, old_value, new_value)
+      VALUES (:NEW.user_id, 'UPDATE', 'gender', :OLD.gender, :NEW.gender);
+    END IF;
+
+    IF :OLD.username != :NEW.username THEN
+      INSERT INTO user_details_sync_queue (user_id, operation_type, updated_field, old_value, new_value)
+      VALUES (:NEW.user_id, 'UPDATE', 'username', :OLD.username, :NEW.username);
+    END IF;
+
+    IF :OLD.password != :NEW.password THEN
+      INSERT INTO user_details_sync_queue (user_id, operation_type, updated_field, old_value, new_value)
+      VALUES (:NEW.user_id, 'UPDATE', 'password', :OLD.password, :NEW.password);
+    END IF;
+
+    IF :OLD.status != :NEW.status THEN
+      INSERT INTO user_details_sync_queue (user_id, operation_type, updated_field, old_value, new_value)
+      VALUES (:NEW.user_id, 'UPDATE', 'status', TO_CHAR(:OLD.status), TO_CHAR(:NEW.status));
+    END IF;
+  END IF;
+
+  -- DELETE
+  IF DELETING THEN
+    INSERT INTO user_details_sync_queue (
+      user_id,
+      operation_type
+    ) VALUES (
+      :OLD.user_id,
+      'DELETE'
+    );
+  END IF;
+END;
